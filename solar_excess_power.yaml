@@ -1,0 +1,217 @@
+blueprint:
+  name: Solar Excess Power Management
+  description: Detect and switch on additional heat devices with extra solar power.
+  domain: automation
+  source_url: https://github.com/gargy007/ha-blueprints
+  author: Petr Gargulak
+  input:
+    input_export_power_entity:
+      name: Entita přebytku energie
+      description: Sensor zobrazující aktuální přebytek/nedostatek energie ve W
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+      default: sensor.solax_export_power
+
+    battery_charge_power_entity:
+      name: Entita nabíjecího výkonu baterie
+      description: Sensor zobrazující aktuální nabíjecí výkon baterie ve W
+      selector:
+        entity:
+          domain: sensor
+          device_class: power
+      default: sensor.solax_battery_charge_power
+    
+    export_power_threshold:
+      name: Minimální přebytek výkonu pro zapnutí
+      description: Minimální výkon dodávaný do sítě pro zapnutí spotřebiče
+      selector:
+        number:
+          min: 0
+          max: 5000
+          unit_of_measurement: "W"
+          step: 100
+          mode: slider
+      default: 1000
+
+    export_power_off_threshold:
+      name: Minimální přebytek výkonu pro vypnutí
+      description: Minimální výkon dodávaný do sítě pro udržení spotřebiče v chodu
+      selector:
+        number:
+          min: 0
+          max: 5000
+          unit_of_measurement: "W"
+          step: 100
+          mode: slider
+      default: 0
+
+    forecast_daily_energy:
+      name: Minimální předpověď denní výroby
+      description: Minimální předpovídaná denní výroba energie pro spínání spotřebiče
+      selector:
+        number:
+          min: 1.0
+          max: 50.0
+          unit_of_measurement: "kWh"
+          step: 0.5
+          mode: slider
+      default: 10.0
+
+    input_device_entity:
+      name: Spotřebič
+      description: Entita spotřebiče v Home Assistant
+      selector:
+        entity:
+          domain:
+            - light
+
+    min_switching_time:
+      name: Minimální doba mezi přepnutím
+      description: Minimální doba mezi změnou stavu spotřebiče
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: "min"
+          step: 1
+          mode: slider
+      default: 10
+
+    forecast_end_time:
+      name: Konec časového okna pro předpověď
+      description: Do kdy lze použít předpověď pro spínání spotřebiče
+      selector:
+        time: {}
+      default: "16:00:00"
+
+    battery_charge_threshold:
+      name: Minimální nabíjecí výkon
+      description: Minimální výkon nabíjení baterie pro povolení předpovědi
+      selector:
+        number:
+          min: 0
+          max: 3000
+          unit_of_measurement: "W"
+          step: 100
+          mode: slider
+      default: 300
+
+    battery_charge_off_threshold:
+      name: Minimální nabíjecí výkon pro vypnutí
+      description: Minimální výkon nabíjení baterie pro udržení spotřebiče v chodu
+      selector:
+        number:
+          min: 0
+          max: 3000
+          unit_of_measurement: "W"
+          step: 100
+          mode: slider
+      default: 0
+
+    notify_entity:
+      name: Notifikační služba
+      description: Služba pro zasílání notifikací
+      selector:
+        entity:
+          domain: notify
+      default: notify.mobile_app_sm_s711b
+
+    enable_light_entity:
+      name: Povolovací světlo
+      description: Volitelné světlo pro povolení/zakázání automatizace
+      selector:
+        entity:
+          domain: light
+      default: ""
+
+    enable_light_duration:
+      name: Minimální doba zapnutí povolovacího světla
+      description: Jak dlouho musí být povolovací světlo zapnuto před aktivací automatizace
+      selector:
+        number:
+          min: 1
+          max: 15
+          unit_of_measurement: "min"
+          step: 1
+          mode: slider
+      default: 5
+
+variables:
+  heater_entity: !input "input_device_entity"
+  export_power_entity: !input "input_export_power_entity"
+  battery_charge_power_entity: !input "battery_charge_power_entity"
+  export_power_threshold: !input "export_power_threshold"
+  export_power_off_threshold: !input "export_power_off_threshold"
+  battery_charge_threshold: !input "battery_charge_threshold"
+  battery_charge_off_threshold: !input "battery_charge_off_threshold"
+  forecast_daily_energy: !input "forecast_daily_energy"
+  min_switching_time: !input "min_switching_time"
+  notify_entity: !input "notify_entity"
+  enable_light_entity: !input "enable_light_entity"
+  enable_light_duration: !input "enable_light_duration"
+
+trigger:
+  - platform: time_pattern
+    minutes: "/1"
+
+condition:
+  - condition: template
+    value_template: >
+      {# {% set last_changed = state_attr(heater_entity, 'last_changed') %} #}
+      {% set last_changed = states.heater_entity.last_changed %}
+      {% if last_changed is not none %}
+        {{ (as_timestamp(now()) - as_timestamp(last_changed)) / 60 >= min_switching_time|int }}
+      {% else %}
+        {{ true }}
+      {% endif %}
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {% set enable_check = true if not enable_light_entity else 
+                 (is_state(enable_light_entity, 'on') and 
+                  ((as_timestamp(now()) - as_timestamp(states[enable_light_entity].last_changed)) / 60 >= enable_light_duration|int)) %}
+              {{ enable_check and
+                 not is_state(heater_entity, 'on') and 
+                 (states(export_power_entity)|float(0) >= export_power_threshold|float or 
+                  (states('sensor.energy_production_today')|float(0) >= forecast_daily_energy|float and 
+                   states(battery_charge_power_entity)|float(0) >= battery_charge_threshold|float)) }}
+        sequence:
+          - service: "{{ notify_entity }}"
+            data:
+              title: "Spotřebič zapnut"
+              message: >
+                {% if states(export_power_entity)|float(0) >= export_power_threshold|float %}
+                  Zapnuto: Dostatečný přebytek energie ({{ states(export_power_entity)|float(0) }}W)
+                {% else %}
+                  Zapnuto: Předpověď ({{ states('sensor.energy_production_today')|float(0) }}kWh) a nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
+                {% endif %}
+          - service: light.turn_on
+            target:
+              entity_id: "{{ heater_entity }}"
+    default:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >
+                  {{ is_state(heater_entity, 'on') and 
+                     (states(export_power_entity)|float(0) < export_power_off_threshold|float and 
+                      states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float) }}
+            sequence:
+              - service: "{{ notify_entity }}"
+                data:
+                  title: "Spotřebič vypnut"
+                  message: >
+                    {% if states(export_power_entity)|float(0) < export_power_threshold|float %}
+                      Vypnuto: Nízký přebytek energie ({{ states(export_power_entity)|float(0) }}W)
+                    {% endif %}
+                    {% if states(battery_charge_power_entity)|float(0) < battery_charge_threshold|float %}
+                      Vypnuto: Nízké nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
+                    {% endif %}
+              - service: light.turn_off
+                target:
+                  entity_id: "{{ heater_entity }}"
