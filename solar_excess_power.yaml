@@ -23,6 +23,38 @@ blueprint:
           device_class: power
       default: sensor.solax_battery_charge_power
     
+    input_heater_device_entity:
+      name: Spotřebič
+      description: Entita spotřebiče v Home Assistant
+      selector:
+        entity:
+          domain:
+            - light
+    
+    battery_level_entity:
+      name: Entita úrovně nabití baterie
+      description: Sensor zobrazující aktuální úroveň nabití baterie
+      selector:
+        entity:
+          domain: sensor
+      default: sensor.battery_level
+
+    notify_entity:
+      name: Notifikační služba
+      description: Služba pro zasílání notifikací
+      selector:
+        entity:
+          domain: notify
+      default: notify.mobile_app_sm_s711b
+
+    enable_light_entity:
+      name: Povolovací světlo
+      description: Volitelné světlo pro povolení/zakázání automatizace
+      selector:
+        entity:
+          domain: light
+      default: ""
+
     export_power_threshold:
       name: Minimální přebytek výkonu pro zapnutí
       description: Minimální výkon dodávaný do sítě pro zapnutí spotřebiče
@@ -59,14 +91,6 @@ blueprint:
           mode: slider
       default: 10.0
 
-    input_device_entity:
-      name: Spotřebič
-      description: Entita spotřebiče v Home Assistant
-      selector:
-        entity:
-          domain:
-            - light
-
     min_switching_time:
       name: Minimální doba mezi přepnutím
       description: Minimální doba mezi změnou stavu spotřebiče
@@ -78,13 +102,6 @@ blueprint:
           step: 1
           mode: slider
       default: 10
-
-    forecast_end_time:
-      name: Konec časového okna pro předpověď
-      description: Do kdy lze použít předpověď pro spínání spotřebiče
-      selector:
-        time: {}
-      default: "16:00:00"
 
     battery_charge_threshold:
       name: Minimální nabíjecí výkon
@@ -110,21 +127,17 @@ blueprint:
           mode: slider
       default: 0
 
-    notify_entity:
-      name: Notifikační služba
-      description: Služba pro zasílání notifikací
+    battery_low_threshold:
+      name: Minimální úroveň nabití baterie pro vypnutí
+      description: Minimální úroveň nabití baterie pro vypnutí spotřebiče
       selector:
-        entity:
-          domain: notify
-      default: notify.mobile_app_sm_s711b
-
-    enable_light_entity:
-      name: Povolovací světlo
-      description: Volitelné světlo pro povolení/zakázání automatizace
-      selector:
-        entity:
-          domain: light
-      default: ""
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+          step: 1
+          mode: slider
+      default: 20
 
     enable_light_duration:
       name: Minimální doba zapnutí povolovacího světla
@@ -139,13 +152,15 @@ blueprint:
       default: 5
 
 variables:
-  heater_entity: !input "input_device_entity"
+  heater_entity: !input "input_heater_device_entity"
   export_power_entity: !input "input_export_power_entity"
   battery_charge_power_entity: !input "battery_charge_power_entity"
   export_power_threshold: !input "export_power_threshold"
   export_power_off_threshold: !input "export_power_off_threshold"
   battery_charge_threshold: !input "battery_charge_threshold"
   battery_charge_off_threshold: !input "battery_charge_off_threshold"
+  battery_low_threshold: !input "battery_low_threshold"
+  battery_level_entity: !input "battery_level_entity"
   forecast_daily_energy: !input "forecast_daily_energy"
   min_switching_time: !input "min_switching_time"
   notify_entity: !input "notify_entity"
@@ -200,7 +215,8 @@ action:
                 value_template: >
                   {{ is_state(heater_entity, 'on') and 
                      (states(export_power_entity)|float(0) < export_power_off_threshold|float and 
-                      states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float) }}
+                      states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float and
+                      states(battery_level_entity)|float(0) < battery_low_threshold|float) }}
             sequence:
               - service: "{{ notify_entity }}"
                 data:
@@ -211,6 +227,9 @@ action:
                     {% endif %}
                     {% if states(battery_charge_power_entity)|float(0) < battery_charge_threshold|float %}
                       Vypnuto: Nízké nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
+                    {% endif %}
+                    {% if states(battery_level_entity)|float(0) < battery_low_threshold|float %}
+                      Vypnuto: Nízká úroveň nabití baterie ({{ states(battery_level_entity)|float(0) }}%)
                     {% endif %}
               - service: light.turn_off
                 target:
