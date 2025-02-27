@@ -1,0 +1,138 @@
+blueprint:
+  name: Room Light Control with Presence Extension
+  description: "Ovládání světel podle senzoru obsazenosti a tlačítka s prodlužováním pracovního světla"
+  domain: automation
+  input:
+    occupancy_sensor:
+      name: Senzor obsazenosti
+      selector:
+        entity:
+          domain: binary_sensor
+    button:
+      name: Tlačítko
+      selector:
+        entity:
+          domain: sensor
+          domain: input_button
+    scene_night_on:
+      name: Noční světlo (zapnutí)
+      selector:
+        entity:
+          domain: scene
+    scene_night_off:
+      name: Noční světlo (vypnutí)
+      selector:
+        entity:
+          domain: scene
+    scene_work_on:
+      name: Pracovní světlo (zapnutí)
+      selector:
+        entity:
+          domain: scene
+    scene_work_off:
+      name: Pracovní světlo (vypnutí)
+      selector:
+        entity:
+          domain: scene
+    working_light_state:
+      name: Stav pracovního světla
+      selector:
+        entity:
+          domain: input_boolean
+    timeout_night:
+      name: Timeout pro noční světlo (sekundy)
+      selector:
+        number:
+          min: 5
+          max: 3600
+          unit_of_measurement: seconds
+    timeout_work:
+      name: Timeout pro pracovní světlo (sekundy)
+      selector:
+        number:
+          min: 5
+          max: 3600
+          unit_of_measurement: seconds
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input occupancy_sensor
+    to: "on"
+    id: "occupancy"
+  - platform: state
+    entity_id: !input button
+    id: "button"
+
+condition: []
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: "occupancy"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input working_light_state
+                    state: "on"
+                sequence:
+                  - wait_for_trigger:
+                      - platform: state
+                        entity_id: !input occupancy_sensor
+                        to: "off"
+                    timeout: !input timeout_work
+                  - service: scene.turn_on
+                    target:
+                      entity_id: !input scene_work_off
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: !input working_light_state
+            default:
+              - service: scene.turn_on
+                target:
+                  entity_id: !input scene_night_on
+              - wait_for_trigger:
+                  - platform: state
+                    entity_id: !input occupancy_sensor
+                    to: "off"
+                timeout: !input timeout_night
+              - service: scene.turn_on
+                target:
+                  entity_id: !input scene_night_off
+
+      - conditions:
+          - condition: trigger
+            id: "button"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input working_light_state
+                    state: "on"
+                sequence:
+                  - service: scene.turn_on
+                    target:
+                      entity_id: !input scene_work_off
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: !input working_light_state
+            default:
+              - choose:
+                  - conditions:
+                      - condition: state
+                        entity_id: !input scene_night_on
+                        state: "on"
+                    sequence:
+                      - service: scene.turn_on
+                        target:
+                          entity_id: !input scene_night_off
+              - service: scene.turn_on
+                target:
+                  entity_id: !input scene_work_on
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: !input working_light_state
