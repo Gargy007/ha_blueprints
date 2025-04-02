@@ -10,8 +10,9 @@ blueprint:
       description: Sensor zobrazující aktuální přebytek/nedostatek energie ve W
       selector:
         entity:
-          domain: sensor
-          device_class: power
+          filter:
+            - domain: sensor
+              device_class: power
       default: sensor.solax_export_power
 
     battery_charge_power_entity:
@@ -19,24 +20,26 @@ blueprint:
       description: Sensor zobrazující aktuální nabíjecí výkon baterie ve W
       selector:
         entity:
-          domain: sensor
-          device_class: power
+          filter:
+            - domain: sensor
+              device_class: power
       default: sensor.solax_battery_charge_power
-    
+
     input_heater_device_entity:
       name: Spotřebič
       description: Entita spotřebiče v Home Assistant
       selector:
         entity:
-          domain:
-            - light
-    
+          filter:
+            - domain: light
+
     battery_level_entity:
       name: Entita úrovně nabití baterie
       description: Sensor zobrazující aktuální úroveň nabití baterie
       selector:
         entity:
-          domain: sensor
+          filter:
+            - domain: sensor
       default: sensor.battery_level
 
     notify_entity:
@@ -44,7 +47,8 @@ blueprint:
       description: Služba pro zasílání notifikací
       selector:
         entity:
-          domain: notify
+          filter:
+            - domain: notify
       default: notify.mobile_app_sm_s711b
 
     enable_light_entity:
@@ -52,7 +56,8 @@ blueprint:
       description: Volitelné světlo pro povolení/zakázání automatizace
       selector:
         entity:
-          domain: light
+          filter:
+            - domain: light
       default: ""
 
     export_power_threshold:
@@ -167,11 +172,11 @@ variables:
   enable_light_entity: !input "enable_light_entity"
   enable_light_duration: !input "enable_light_duration"
 
-trigger:
-  - platform: time_pattern
-    minutes: "/1"
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
 
-condition:
+conditions:
   - condition: template
     value_template: >
       {# {% set last_changed = state_attr(heater_entity, 'last_changed') %} #}
@@ -196,7 +201,7 @@ action:
                   (states('sensor.energy_production_today')|float(0) >= forecast_daily_energy|float and 
                    states(battery_charge_power_entity)|float(0) >= battery_charge_threshold|float)) }}
         sequence:
-          - service: "{{ notify_entity }}"
+          - action: "{{ notify_entity }}"
             data:
               title: "Spotřebič zapnut"
               message: >
@@ -205,7 +210,7 @@ action:
                 {% else %}
                   Zapnuto: Předpověď ({{ states('sensor.energy_production_today')|float(0) }}kWh) a nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
                 {% endif %}
-          - service: light.turn_on
+          - action: light.turn_on
             target:
               entity_id: "{{ heater_entity }}"
     default:
@@ -218,7 +223,7 @@ action:
                       states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float and
                       states(battery_level_entity)|float(0) <= battery_low_threshold|float) }}
             sequence:
-              - service: "{{ notify_entity }}"
+              - action: "{{ notify_entity }}"
                 data:
                   title: "Spotřebič vypnut"
                   message: >
@@ -231,6 +236,6 @@ action:
                     {% if states(battery_level_entity)|float(0) < battery_low_threshold|float %}
                       Vypnuto: Nízká úroveň nabití baterie ({{ states(battery_level_entity)|float(0) }}%)
                     {% endif %}
-              - service: light.turn_off
+              - action: light.turn_off
                 target:
                   entity_id: "{{ heater_entity }}"

@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Light Control with Presence Extension
+  name: Svetlo se snimacem pohybu a timeoutem
   description: "Ovládání světel podle senzoru obsazenosti a tlačítka s prodlužováním pracovního světla"
   domain: automation
   input:
@@ -7,68 +7,89 @@ blueprint:
       name: Senzor obsazenosti
       selector:
         entity:
-          domain: binary_sensor
-    button:
+          filter:
+            - device_class: occupancy
+              domain: binary_sensor
+            - device_class: motion
+              domain: binary_sensor
+    ambient_light:
+      name: Senzor okolního osvětlení
+      selector:
+        entity:
+          filter:
+            - device_class: illuminance
+              domain: sensor
+    minimal_ambient:
+      name: Minimální osvětlení pro zapnutí nočního světla
+      selector:
+        number:
+          min: 0
+          max: 500
+          unit_of_measurement: lux
+
+    tlacitko:
       name: Tlačítko
       selector:
         entity:
-          domain: sensor
-          domain: input_button
+          filter:
+            - domain: binary_sensor
+            - domain: input_button
+
     scene_night_on:
       name: Noční světlo (zapnutí)
       selector:
-        entity:
-          domain: scene
-    scene_night_off:
-      name: Noční světlo (vypnutí)
+        target:
+          entity:
+            domain: scene
+    scene_off:
+      name: Světlo vypnuto
       selector:
-        entity:
-          domain: scene
+        target:
+          entity:
+            domain: scene
     scene_work_on:
       name: Pracovní světlo (zapnutí)
       selector:
-        entity:
-          domain: scene
-    scene_work_off:
-      name: Pracovní světlo (vypnutí)
-      selector:
-        entity:
-          domain: scene
+        target:
+          entity:
+            domain: scene
     working_light_state:
       name: Stav pracovního světla
       selector:
         entity:
-          domain: input_boolean
+          filter:
+            - domain: input_boolean
     timeout_night:
       name: Timeout pro noční světlo (sekundy)
       selector:
         number:
           min: 5
-          max: 3600
+          max: 300
           unit_of_measurement: seconds
     timeout_work:
-      name: Timeout pro pracovní světlo (sekundy)
+      name: Timeout pro pracovní světlo (minuty)
       selector:
         number:
-          min: 5
-          max: 3600
-          unit_of_measurement: seconds
+          min: 1
+          max: 60
+          unit_of_measurement: minutes
 
 mode: restart
 max_exceeded: silent
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input occupancy_sensor
     to: "on"
     id: "occupancy"
-  - platform: state
-    entity_id: !input button
-    id: "button"
+  - trigger: state
+    entity_id: !input tlacitko
+    to: "on"
+    id: "tlacitko"
 
 condition: []
 
-action:
+actions:
   - choose:
       - conditions:
           - condition: trigger
@@ -81,32 +102,35 @@ action:
                     state: "on"
                 sequence:
                   - wait_for_trigger:
-                      - platform: state
+                      - trigger: state
                         entity_id: !input occupancy_sensor
                         to: "off"
-                    timeout: !input timeout_work
-                  - service: scene.turn_on
-                    target:
-                      entity_id: !input scene_work_off
-                  - service: input_boolean.turn_off
+                  - alias: "Wait the number of minutes that has been set"
+                    delay: !input timeout_work
+                  - action: scene.turn_on
+                    target: !input scene_off
+                  - action: input_boolean.turn_off
                     target:
                       entity_id: !input working_light_state
-            default:
-              - service: scene.turn_on
-                target:
-                  entity_id: !input scene_night_on
-              - wait_for_trigger:
-                  - platform: state
-                    entity_id: !input occupancy_sensor
-                    to: "off"
-                timeout: !input timeout_night
-              - service: scene.turn_on
-                target:
-                  entity_id: !input scene_night_off
+              - conditions:
+                  - condition: numeric_state
+                    entity_id: !input ambient_light
+                    below: !input minimal_ambient
+                sequence:
+                  - action: scene.turn_on
+                    target: !input scene_night_on
+                  - wait_for_trigger:
+                      - trigger: state
+                        entity_id: !input occupancy_sensor
+                        to: "off"
+                  - alias: "Wait the number of seconds that has been set"
+                    delay: !input timeout_night
+                  - action: scene.turn_on
+                    target: !input scene_off
 
       - conditions:
           - condition: trigger
-            id: "button"
+            id: "tlacitko"
         sequence:
           - choose:
               - conditions:
@@ -114,25 +138,34 @@ action:
                     entity_id: !input working_light_state
                     state: "on"
                 sequence:
-                  - service: scene.turn_on
-                    target:
-                      entity_id: !input scene_work_off
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: !input working_light_state
-            default:
-              - choose:
-                  - conditions:
-                      - condition: state
-                        entity_id: !input scene_night_on
-                        state: "on"
-                    sequence:
-                      - service: scene.turn_on
+                  - choose:
+                      - conditions:
+                          - condition: state
+                            entity_id: !input occupancy_sensor
+                            state: "on"
+                        sequence:
+                          - action: input_boolean.turn_off
+                            target:
+                              entity_id: !input working_light_state
+                          - action: scene.turn_on
+                            target: !input scene_night_on
+                          - wait_for_trigger:
+                              - trigger: state
+                                entity_id: !input occupancy_sensor
+                                to: "off"
+                          - alias: "Wait the number of seconds that has been set"
+                            delay: !input timeout_night
+                          - action: scene.turn_on
+                            target: !input scene_off
+                    default:
+                      - action: scene.turn_on
+                        target: !input scene_off
+                      - action: input_boolean.turn_off
                         target:
-                          entity_id: !input scene_night_off
-              - service: scene.turn_on
-                target:
-                  entity_id: !input scene_work_on
-              - service: input_boolean.turn_on
+                          entity_id: !input working_light_state
+            default:
+              - action: scene.turn_on
+                target: !input scene_work_on
+              - action: input_boolean.turn_on
                 target:
                   entity_id: !input working_light_state
