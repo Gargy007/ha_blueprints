@@ -59,16 +59,16 @@ blueprint:
             - domain: notify
       default: notify.mobile_app_sm_s711b
 
-    enable_light_entity:
-      name: Povolovací světlo
-      description: Volitelné světlo pro povolení/zakázání automatizace
+    enable_entity:
+      name: Povolovací entita
+      description: Volitelná entita (světlo/vypínač) pro povolení/zakázání automatizace
       selector:
         entity:
           filter:
             - domain: light
             - domain: switch
       default: ""
-
+      
     export_power_threshold:
       name: Minimální přebytek výkonu pro zapnutí
       description: Minimální výkon dodávaný do sítě pro zapnutí spotřebiče
@@ -179,7 +179,7 @@ variables:
   forecast_daily_energy: !input "forecast_daily_energy"
   min_switching_time: !input "min_switching_time"
   notify_entity: !input "notify_entity"
-  enable_light_entity: !input "enable_light_entity"
+  enable_entity: !input "enable_entity"  
   enable_light_duration: !input "enable_light_duration"
 
 triggers:
@@ -202,10 +202,10 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set enable_check = true if not enable_light_entity else 
-                 (is_state(enable_light_entity, 'on') and 
-                  ((as_timestamp(now()) - as_timestamp(states[enable_light_entity].last_changed)) / 60 >= enable_light_duration|int)) %}
-              {{ enable_check and
+              {% set enable_check = true if not enable_entity else 
+                 (is_state(enable_entity, 'on') and 
+                  ((as_timestamp(now()) - as_timestamp(states[enable_entity].last_changed)) / 60 >= enable_light_duration|int)) %}
+                {{ enable_check and
                  not is_state(heater_entity, 'on') and 
                  (states(export_power_entity)|float(0) >= export_power_threshold|float or 
                   (states('sensor.energy_production_today')|float(0) >= forecast_daily_energy|float and 
