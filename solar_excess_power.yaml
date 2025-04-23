@@ -32,6 +32,7 @@ blueprint:
         entity:
           filter:
             - domain: light
+            - domain: switch
 
     battery_level_entity:
       name: Entita úrovně nabití baterie
@@ -58,6 +59,7 @@ blueprint:
         entity:
           filter:
             - domain: light
+            - domain: switch
       default: ""
 
     export_power_threshold:
@@ -213,6 +215,9 @@ action:
           - action: light.turn_on
             target:
               entity_id: "{{ heater_entity }}"
+          - action: switch.turn_on
+            target:
+              entity_id: "{{ heater_entity }}"
     default:
       - choose:
           - conditions:
@@ -237,5 +242,8 @@ action:
                       Vypnuto: Nízká úroveň nabití baterie ({{ states(battery_level_entity)|float(0) }}%)
                     {% endif %}
               - action: light.turn_off
+                target:
+                  entity_id: "{{ heater_entity }}"
+              - action: switch.turn_off
                 target:
                   entity_id: "{{ heater_entity }}"
