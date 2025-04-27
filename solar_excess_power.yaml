@@ -231,9 +231,9 @@ action:
               - condition: template
                 value_template: >
                   {{ is_state(heater_entity, 'on') and 
-                     (states(export_power_entity)|float(0) < export_power_off_threshold|float or 
-                      states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float or
-                      states(battery_level_entity)|float(0) <= battery_low_threshold|float) }}
+                  states(export_power_entity)|float(0) < export_power_off_threshold|float and 
+                  states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float and
+                  states(battery_level_entity)|float(0) <= battery_low_threshold|float }}
             sequence:
               - action: "{{ notify_entity }}"
                 data:
