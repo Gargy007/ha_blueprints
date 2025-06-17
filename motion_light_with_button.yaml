@@ -106,7 +106,8 @@ actions:
                         entity_id: !input occupancy_sensor
                         to: "off"
                   - alias: "Wait the number of minutes that has been set"
-                    delay: !input timeout_work
+                    delay: 
+                      minutes: !input timeout_work
                   - action: scene.turn_on
                     target: !input scene_off
                   - action: input_boolean.turn_off
