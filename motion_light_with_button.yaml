@@ -95,6 +95,9 @@ actions:
           - condition: trigger
             id: "occupancy"
         sequence:
+          # Add small delay to let button trigger take priority
+          - delay:
+              milliseconds: 500
           - choose:
               - conditions:
                   - condition: state
@@ -106,7 +109,7 @@ actions:
                         entity_id: !input occupancy_sensor
                         to: "off"
                   - alias: "Wait the number of minutes that has been set"
-                    delay: 
+                    delay:
                       minutes: !input timeout_work
                   - action: scene.turn_on
                     target: !input scene_off
@@ -117,6 +120,10 @@ actions:
                   - condition: numeric_state
                     entity_id: !input ambient_light
                     below: !input minimal_ambient
+                  # Check if working light was just turned on by button
+                  - condition: state
+                    entity_id: !input working_light_state
+                    state: "off"
                 sequence:
                   - action: scene.turn_on
                     target: !input scene_night_on
