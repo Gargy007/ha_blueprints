@@ -57,7 +57,7 @@ blueprint:
         entity:
           filter:
             - domain: notify
-      default: notify.mobile_app_sm_s711b
+      default: ""
 
     enable_entity:
       name: Povolovací entita
@@ -210,15 +210,20 @@ action:
                   (states('sensor.energy_production_today')|float(0) >= forecast_daily_energy|float and 
                    states(battery_charge_power_entity)|float(0) >= battery_charge_threshold|float)) }}
         sequence:
-          - action: "{{ notify_entity }}"
-            data:
-              title: "{{ device_name }} zapnut"
-              message: >
-                {% if states(export_power_entity)|float(0) >= export_power_threshold|float %}
-                  {{ device_name }} zapnut: Dostatečný přebytek energie ({{ states(export_power_entity)|float(0) }}W)
-                {% else %}
-                  {{ device_name }} zapnut: Předpověď ({{ states('sensor.energy_production_today')|float(0) }}kWh) a nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
-                {% endif %}
+          - if:
+              - condition: template
+                # Ověří, zda je entita definovaná a není to prázdný řetězec nebo 'none'
+                value_template: "{{ notify_entity is defined and notify_entity not in [none, 'none', ''] }}"
+            then:
+              - action: "{{ notify_entity }}"
+                data:
+                  title: "{{ device_name }} zapnut"
+                  message: >
+                    {% if states(export_power_entity)|float(0) >= export_power_threshold|float %}
+                      {{ device_name }} zapnut: Dostatečný přebytek energie ({{ states(export_power_entity)|float(0) }}W)
+                    {% else %}
+                      {{ device_name }} zapnut: Předpověď ({{ states('sensor.energy_production_today')|float(0) }}kWh) a nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
+                    {% endif %}
           - action: light.turn_on
             target:
               entity_id: "{{ heater_entity }}"
@@ -235,20 +240,25 @@ action:
                   states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float and
                   states(battery_level_entity)|float(0) <= battery_low_threshold|float }}
             sequence:
-              - action: "{{ notify_entity }}"
-                data:
-                  title: "{{ device_name }} vypnut"
-                  message: >
-                    {{ device_name }} vypnut:
-                    {% if states(export_power_entity)|float(0) < export_power_off_threshold|float %}
-                      Nízký přebytek energie ({{ states(export_power_entity)|float(0) }}W)
-                    {% elif states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float %}
-                      Nízké nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
-                    {% elif states(battery_level_entity)|float(0) <= battery_low_threshold|float %}
-                      Nízká úroveň nabití baterie ({{ states(battery_level_entity)|float(0) }}%)
-                    {% else %}
-                      Neznámý důvod
-                    {% endif %}
+              - if:
+                  - condition: template
+                    # Ověří, zda je entita definovaná a není to prázdný řetězec nebo 'none'
+                    value_template: "{{ notify_entity is defined and notify_entity not in [none, 'none', ''] }}"
+                then:
+                  - action: "{{ notify_entity }}"
+                    data:
+                      title: "{{ device_name }} vypnut"
+                      message: >
+                        {{ device_name }} vypnut:
+                        {% if states(export_power_entity)|float(0) < export_power_off_threshold|float %}
+                          Nízký přebytek energie ({{ states(export_power_entity)|float(0) }}W)
+                        {% elif states(battery_charge_power_entity)|float(0) < battery_charge_off_threshold|float %}
+                          Nízké nabíjení baterie ({{ states(battery_charge_power_entity)|float(0) }}W)
+                        {% elif states(battery_level_entity)|float(0) <= battery_low_threshold|float %}
+                          Nízká úroveň nabití baterie ({{ states(battery_level_entity)|float(0) }}%)
+                        {% else %}
+                          Neznámý důvod
+                        {% endif %}
               - action: light.turn_off
                 target:
                   entity_id: "{{ heater_entity }}"
