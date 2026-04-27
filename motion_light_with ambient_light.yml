@@ -1,6 +1,6 @@
 blueprint:
-  name: Motion-activated Light
-  description: Turn on a light when motion is detected.
+  name: Motion-activated Light with Ambient Light Condition
+  description: Turn on a light when motion is detected and ambient light is below a threshold.
   domain: automation
   source_url: https://github.com/Gargy007/ha_blueprints/blob/main/motion_light_with%20ambient_light.yml
   author: Home Assistant
