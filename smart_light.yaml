@@ -142,6 +142,7 @@ mode: restart
 max_exceeded: silent
 
 variables:
+  motion_sensors: !input motion_sensors
   sched_on_type: !input schedule_on_type
   sched_off_type: !input schedule_off_type
   sched_on_time: !input schedule_on_time
@@ -264,8 +265,6 @@ actions:
           - condition: template
             value_template: >
               {{ expand(motion_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
-            variables:
-              motion_sensors: !input motion_sensors
           # Nezhasínej pokud jsme v rozvrhovém okně
           - condition: template
             value_template: "{{ not in_schedule_window }}"
@@ -304,8 +303,6 @@ actions:
           - condition: template
             value_template: >
               {{ expand(motion_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
-            variables:
-              motion_sensors: !input motion_sensors
           - action: light.turn_off
             target: !input light_target
 
@@ -321,7 +318,5 @@ actions:
           - condition: template
             value_template: >
               {{ expand(motion_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
-            variables:
-              motion_sensors: !input motion_sensors
           - action: light.turn_off
             target: !input light_target
