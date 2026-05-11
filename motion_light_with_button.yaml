@@ -166,11 +166,15 @@ actions:
                           - action: scene.turn_on
                             target: !input scene_off
                     default:
-                      - action: scene.turn_on
-                        target: !input scene_off
                       - action: input_boolean.turn_off
                         target:
                           entity_id: !input working_light_state
+                      - action: scene.turn_on
+                        target: !input scene_night_on
+                      - alias: "Krátký čas pro odchod z místnosti"
+                        delay: !input timeout_night
+                      - action: scene.turn_on
+                        target: !input scene_off
             default:
               # Boolean FIRST - must be set before potential restart from motion
               - action: input_boolean.turn_on
