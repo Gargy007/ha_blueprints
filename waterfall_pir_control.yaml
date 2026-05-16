@@ -1,0 +1,120 @@
+blueprint:
+  name: Waterfall PIR Control with Time Window
+  description: >
+    Turn on a waterfall (light/switch) when motion is detected by a PIR sensor,
+    but only within a configured time window. The waterfall turns off after a
+    configurable delay from the last motion, or immediately when the time window
+    expires - even if PIR is still active.
+  domain: automation
+  source_url: https://github.com/Gargy007/ha_blueprints/blob/main/waterfall_pir_control.yaml
+  author: Gargy007
+  input:
+    motion_entity:
+      name: PIR Sensor
+      description: Motion/occupancy sensor that triggers the waterfall.
+      selector:
+        entity:
+          filter:
+            - device_class: motion
+              domain: binary_sensor
+            - device_class: occupancy
+              domain: binary_sensor
+    target_entity:
+      name: Waterfall Output
+      description: The light or switch entity controlling the waterfall.
+      selector:
+        target:
+          entity:
+            domain:
+              - light
+              - switch
+    time_start:
+      name: Start Time
+      description: Start of the allowed time window for waterfall operation.
+      default: "08:00:00"
+      selector:
+        time:
+    time_end:
+      name: End Time
+      description: >
+        End of the allowed time window. The waterfall will be forced off at this
+        time regardless of PIR state.
+      default: "22:00:00"
+      selector:
+        time:
+    no_motion_wait:
+      name: Off Delay
+      description: >
+        Time to keep the waterfall running after the last motion is detected
+        (in seconds).
+      default: 300
+      selector:
+        number:
+          min: 30
+          max: 3600
+          step: 30
+          unit_of_measurement: seconds
+    enable_entity:
+      name: Enable Switch (Optional)
+      description: >
+        If configured, the automation only runs when this entity is "on".
+        Another automation can disable the waterfall by turning this off.
+        Leave empty to always allow operation within the time window.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+            - domain: switch
+            - domain: binary_sensor
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  enable_ent: !input enable_entity
+
+triggers:
+  - trigger: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+
+conditions:
+  - condition: time
+    after: !input time_start
+    before: !input time_end
+  - condition: template
+    value_template: "{{ not enable_ent or is_state(enable_ent, 'on') }}"
+
+actions:
+  - alias: "Turn on the waterfall"
+    action: homeassistant.turn_on
+    target: !input target_entity
+
+  - alias: "Wait for PIR off or time window end"
+    wait_for_trigger:
+      - trigger: state
+        entity_id: !input motion_entity
+        to: "off"
+      - trigger: time
+        at: !input time_end
+
+  - alias: "If still in time window (PIR went off), wait delay respecting window end"
+    choose:
+      - conditions:
+          - condition: time
+            after: !input time_start
+            before: !input time_end
+        sequence:
+          - alias: "Wait off delay or until time window expires"
+            wait_for_trigger:
+              - trigger: time
+                at: !input time_end
+            timeout:
+              seconds: !input no_motion_wait
+            continue_on_timeout: true
+
+  - alias: "Turn off the waterfall"
+    action: homeassistant.turn_off
+    target: !input target_entity
