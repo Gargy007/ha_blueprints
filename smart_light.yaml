@@ -62,6 +62,20 @@ blueprint:
           max: 3600
           unit_of_measurement: seconds
 
+    # ── Rolety (volitelné) ──
+    cover_entities:
+      name: Rolety / závěsy (volitelné)
+      description: >
+        Pokud jsou vybrány a VŠECHNY jsou zavřené (closed),
+        PIR pohyb nebude aktivovat světlo.
+        Nechte prázdné pokud nepotřebujete.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: cover
+
     # ── Rozvrh ZAPNUTÍ ──
     schedule_on_type:
       name: "Rozvrh ZAP: typ"
@@ -143,6 +157,7 @@ max_exceeded: silent
 
 variables:
   motion_sensors: !input motion_sensors
+  cover_ents: !input cover_entities
   sched_on_type: !input schedule_on_type
   sched_off_type: !input schedule_off_type
   sched_on_time: !input schedule_on_time
@@ -250,6 +265,13 @@ actions:
           - condition: numeric_state
             entity_id: !input ambient_sensor
             below: !input ambient_threshold
+          # Blokuj PIR pokud jsou všechny rolety zavřené
+          - condition: template
+            value_template: >
+              {{ cover_ents | length == 0 or
+                 expand(cover_ents)
+                 | selectattr('state', 'eq', 'closed')
+                 | list | count < cover_ents | length }}
           - action: light.turn_on
             target: !input light_target
 
