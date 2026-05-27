@@ -282,7 +282,8 @@ actions:
           - condition: trigger
             id: motion_off
         sequence:
-          - delay: !input motion_timeout
+          - delay:
+              seconds: !input motion_timeout
           # Ověř, že žádný senzor už nedetekuje
           - condition: template
             value_template: >
