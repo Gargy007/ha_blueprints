@@ -76,6 +76,21 @@ blueprint:
           filter:
             - domain: cover
 
+    # ── Zpoždění ZigBee ──
+    light_stagger_delay:
+      name: "Zpoždění mezi světly (ms)"
+      description: >
+        Zpoždění mezi zapnutím jednotlivých světel.
+        Pomáhá při výpadcích ZigBee sítě. 0 = bez zpoždění.
+      default: 500
+      selector:
+        number:
+          min: 0
+          max: 5000
+          unit_of_measurement: ms
+          step: 100
+          mode: slider
+
     # ── Rozvrh ZAPNUTÍ ──
     schedule_on_type:
       name: "Rozvrh ZAP: typ"
@@ -199,6 +214,12 @@ variables:
         {{ now_t >= on_t or now_t < off_t }}
       {% endif %}
     {% endif %}
+  # Extrakce entity ID světel pro staggered zapínání
+  _lt_raw: !input light_target
+  light_entity_list: >
+    {% set ids = _lt_raw.get('entity_id', []) %}
+    {% if ids is string %}{{ [ids] }}{% else %}{{ ids | list }}{% endif %}
+  light_stagger_ms: !input light_stagger_delay
 
 triggers:
   # ── Pohyb ZAP ──
@@ -272,8 +293,14 @@ actions:
                  expand(cover_ents)
                  | selectattr('state', 'eq', 'closed')
                  | list | count < cover_ents | length }}
-          - action: light.turn_on
-            target: !input light_target
+          - repeat:
+              for_each: "{{ light_entity_list }}"
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                - delay:
+                    milliseconds: "{{ light_stagger_ms | int }}"
 
       # ════════════════════════════════════════
       # POHYB SKONČIL → timeout → zhasni (pokud nejsme v okně)
@@ -301,8 +328,14 @@ actions:
           - condition: trigger
             id: schedule_on
         sequence:
-          - action: light.turn_on
-            target: !input light_target
+          - repeat:
+              for_each: "{{ light_entity_list }}"
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                - delay:
+                    milliseconds: "{{ light_stagger_ms | int }}"
 
       # ════════════════════════════════════════
       # ROZVRH ZAP (pevný čas) — jen pokud typ = fixed_time
@@ -313,8 +346,14 @@ actions:
           - condition: template
             value_template: "{{ sched_on_type == 'fixed_time' }}"
         sequence:
-          - action: light.turn_on
-            target: !input light_target
+          - repeat:
+              for_each: "{{ light_entity_list }}"
+              sequence:
+                - action: light.turn_on
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                - delay:
+                    milliseconds: "{{ light_stagger_ms | int }}"
 
       # ════════════════════════════════════════
       # ROZVRH VYP (sunset/sunrise) — zhasni pokud není pohyb
