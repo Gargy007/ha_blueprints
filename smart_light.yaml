@@ -180,13 +180,19 @@ variables:
   sched_on_offset: !input schedule_on_offset
   sched_off_offset: !input schedule_off_offset
   # Vypočítej efektivní časy ZAP/VYP
+  # Pozn: po západu slunce se next_setting překlápí na zítřek → pro kladný
+  # offset musíme odečíst 1 den, aby výpočet odpovídal dnešnímu západu.
   effective_on_time: >
     {% if sched_on_type == 'fixed_time' %}
       {{ sched_on_time }}
     {% elif sched_on_type == 'sunset' %}
-      {{ (state_attr('sun.sun', 'next_setting') | as_datetime + timedelta(minutes=sched_on_offset | int(0))) .strftime('%H:%M:%S') }}
+      {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
+      {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
+      {{ (base + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M:%S') }}
     {% elif sched_on_type == 'sunrise' %}
-      {{ (state_attr('sun.sun', 'next_rising') | as_datetime + timedelta(minutes=sched_on_offset | int(0))) .strftime('%H:%M:%S') }}
+      {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
+      {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
+      {{ (base + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M:%S') }}
     {% else %}
       none
     {% endif %}
@@ -194,9 +200,13 @@ variables:
     {% if sched_off_type == 'fixed_time' %}
       {{ sched_off_time }}
     {% elif sched_off_type == 'sunset' %}
-      {{ (state_attr('sun.sun', 'next_setting') | as_datetime + timedelta(minutes=sched_off_offset | int(0))) .strftime('%H:%M:%S') }}
+      {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
+      {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
+      {{ (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M:%S') }}
     {% elif sched_off_type == 'sunrise' %}
-      {{ (state_attr('sun.sun', 'next_rising') | as_datetime + timedelta(minutes=sched_off_offset | int(0))) .strftime('%H:%M:%S') }}
+      {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
+      {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
+      {{ (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M:%S') }}
     {% else %}
       none
     {% endif %}
@@ -235,17 +245,28 @@ triggers:
     id: motion_off
 
   # ── Rozvrh ZAP: západ slunce ──
+  # Po západu se next_setting překlopí na zítřek → odečteme 1 den
   - trigger: template
     value_template: >
-      {{ sched_on_type == 'sunset' and
-         now().strftime('%H:%M') == (state_attr('sun.sun', 'next_setting') | as_datetime + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M') }}
+      {% if sched_on_type != 'sunset' %}
+        false
+      {% else %}
+        {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
+        {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
+        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M') }}
+      {% endif %}
     id: schedule_on
 
   # ── Rozvrh ZAP: východ slunce ──
   - trigger: template
     value_template: >
-      {{ sched_on_type == 'sunrise' and
-         now().strftime('%H:%M') == (state_attr('sun.sun', 'next_rising') | as_datetime + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M') }}
+      {% if sched_on_type != 'sunrise' %}
+        false
+      {% else %}
+        {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
+        {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
+        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M') }}
+      {% endif %}
     id: schedule_on
 
   # ── Rozvrh ZAP: pevný čas ──
@@ -256,15 +277,25 @@ triggers:
   # ── Rozvrh VYP: západ slunce ──
   - trigger: template
     value_template: >
-      {{ sched_off_type == 'sunset' and
-         now().strftime('%H:%M') == (state_attr('sun.sun', 'next_setting') | as_datetime + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
+      {% if sched_off_type != 'sunset' %}
+        false
+      {% else %}
+        {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
+        {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
+        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
+      {% endif %}
     id: schedule_off
 
   # ── Rozvrh VYP: východ slunce ──
   - trigger: template
     value_template: >
-      {{ sched_off_type == 'sunrise' and
-         now().strftime('%H:%M') == (state_attr('sun.sun', 'next_rising') | as_datetime + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
+      {% if sched_off_type != 'sunrise' %}
+        false
+      {% else %}
+        {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
+        {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
+        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
+      {% endif %}
     id: schedule_off
 
   # ── Rozvrh VYP: pevný čas ──
