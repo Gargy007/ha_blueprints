@@ -320,10 +320,10 @@ actions:
           # Blokuj PIR pokud jsou všechny rolety zavřené
           - condition: template
             value_template: >
+              {% set expanded = expand(cover_ents) | list %}
               {{ cover_ents | length == 0 or
-                 expand(cover_ents)
-                 | selectattr('state', 'eq', 'closed')
-                 | list | count < cover_ents | length }}
+                 expanded | selectattr('state', 'eq', 'closed')
+                 | list | count < expanded | count }}
           - repeat:
               for_each: "{{ light_entity_list }}"
               sequence:
