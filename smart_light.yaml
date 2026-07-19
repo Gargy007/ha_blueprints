@@ -2,7 +2,7 @@ blueprint:
   name: Smart Light – PIR + Ambient + Rozvrh
   description: >
     Chytré ovládání světla: zapíná se pohybem (pokud je tma) NEBO
-    podle rozvrhu (pevný čas / západ / východ slunce s offsetem).
+    podle rozvrhu (západ / východ slunce s offsetem a délkou svícení).
     Zhasíná po timeoutu bez pohybu, ale ne pokud jsme v časovém okně.
     Jeden blueprint = jedno světlo. Více světel = více instancí.
   domain: automation
@@ -91,37 +91,28 @@ blueprint:
           step: 100
           mode: slider
 
-    # ── Rozvrh ZAPNUTÍ ──
+    # ── Rozvrh ──
     schedule_on_type:
-      name: "Rozvrh ZAP: typ"
+      name: "Rozvrh: start"
       description: >
         Kdy automaticky zapnout světlo.
-        "disabled" = bez rozvrhu, jen pohyb.
+        "disabled" = bez rozvrhu, jen pohyb. Světlo pak svítí po nastavenou dobu.
       default: disabled
       selector:
         select:
           options:
             - label: Vypnuto (jen pohyb)
               value: disabled
-            - label: Pevný čas
-              value: fixed_time
             - label: Západ slunce
               value: sunset
             - label: Východ slunce
               value: sunrise
 
-    schedule_on_time:
-      name: "Rozvrh ZAP: čas (pro pevný čas)"
-      description: Ignoruje se pokud typ není "Pevný čas".
-      default: "18:00:00"
-      selector:
-        time:
-
     schedule_on_offset:
-      name: "Rozvrh ZAP: offset (minuty)"
+      name: "Rozvrh: offset startu (minuty)"
       description: >
         Offset v minutách pro sunset/sunrise.
-        Záporné = před událostí, kladné = po. Ignoruje se pro pevný čas.
+        Záporné = před událostí, kladné = po.
       default: 0
       selector:
         number:
@@ -129,42 +120,14 @@ blueprint:
           max: 120
           unit_of_measurement: min
 
-    # ── Rozvrh VYPNUTÍ ──
-    schedule_off_type:
-      name: "Rozvrh VYP: typ"
-      description: >
-        Kdy automaticky vypnout rozvrhem zapnuté světlo.
-        "disabled" = nevypínat rozvrhem (jen timeout po pohybu).
-      default: disabled
-      selector:
-        select:
-          options:
-            - label: Vypnuto (jen timeout)
-              value: disabled
-            - label: Pevný čas
-              value: fixed_time
-            - label: Západ slunce
-              value: sunset
-            - label: Východ slunce
-              value: sunrise
-
-    schedule_off_time:
-      name: "Rozvrh VYP: čas (pro pevný čas)"
-      description: Ignoruje se pokud typ není "Pevný čas".
-      default: "23:00:00"
-      selector:
-        time:
-
-    schedule_off_offset:
-      name: "Rozvrh VYP: offset (minuty)"
-      description: >
-        Offset v minutách pro sunset/sunrise.
-        Záporné = před událostí, kladné = po. Ignoruje se pro pevný čas.
-      default: 0
+    schedule_duration:
+      name: "Rozvrh: délka svícení (minuty)"
+      description: Jak dlouho má světlo svítit po automatickém zapnutí rozvrhem.
+      default: 60
       selector:
         number:
-          min: -120
-          max: 120
+          min: 1
+          max: 360
           unit_of_measurement: min
 
 mode: restart
@@ -174,18 +137,13 @@ variables:
   motion_sensors: !input motion_sensors
   cover_ents: !input cover_entities
   sched_on_type: !input schedule_on_type
-  sched_off_type: !input schedule_off_type
-  sched_on_time: !input schedule_on_time
-  sched_off_time: !input schedule_off_time
   sched_on_offset: !input schedule_on_offset
-  sched_off_offset: !input schedule_off_offset
-  # Vypočítej efektivní časy ZAP/VYP
+  schedule_duration_minutes: !input schedule_duration
+  # Vypočítej efektivní čas ZAP
   # Pozn: po západu slunce se next_setting překlápí na zítřek → pro kladný
   # offset musíme odečíst 1 den, aby výpočet odpovídal dnešnímu západu.
   effective_on_time: >
-    {% if sched_on_type == 'fixed_time' %}
-      {{ sched_on_time }}
-    {% elif sched_on_type == 'sunset' %}
+    {% if sched_on_type == 'sunset' %}
       {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
       {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
       {{ (base + timedelta(minutes=sched_on_offset | int(0))).strftime('%H:%M:%S') }}
@@ -196,33 +154,14 @@ variables:
     {% else %}
       none
     {% endif %}
-  effective_off_time: >
-    {% if sched_off_type == 'fixed_time' %}
-      {{ sched_off_time }}
-    {% elif sched_off_type == 'sunset' %}
-      {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
-      {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
-      {{ (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M:%S') }}
-    {% elif sched_off_type == 'sunrise' %}
-      {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
-      {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
-      {{ (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M:%S') }}
-    {% else %}
-      none
-    {% endif %}
   # Jsme právě v časovém okně?
   in_schedule_window: >
-    {% if sched_on_type == 'disabled' or sched_off_type == 'disabled' %}
+    {% if sched_on_type == 'disabled' %}
       false
     {% else %}
-      {% set now_t = now().strftime('%H:%M:%S') %}
-      {% set on_t = effective_on_time %}
-      {% set off_t = effective_off_time %}
-      {% if on_t < off_t %}
-        {{ on_t <= now_t < off_t }}
-      {% else %}
-        {{ now_t >= on_t or now_t < off_t }}
-      {% endif %}
+      {% set start_today = today_at(effective_on_time) %}
+      {% set start = start_today if now() >= start_today else start_today - timedelta(days=1) %}
+      {{ start <= now() < start + timedelta(minutes=schedule_duration_minutes | int(0)) }}
     {% endif %}
   # Extrakce entity ID světel pro staggered zapínání
   _lt_raw: !input light_target
@@ -269,39 +208,17 @@ triggers:
       {% endif %}
     id: schedule_on
 
-  # ── Rozvrh ZAP: pevný čas ──
-  - trigger: time
-    at: !input schedule_on_time
-    id: schedule_on_fixed
-
-  # ── Rozvrh VYP: západ slunce ──
+  # ── Rozvrh VYP: start + délka svícení ──
   - trigger: template
     value_template: >
-      {% if sched_off_type != 'sunset' %}
+      {% if sched_on_type == 'disabled' %}
         false
       {% else %}
-        {% set ns = state_attr('sun.sun', 'next_setting') | as_datetime | as_local %}
-        {% set base = ns - timedelta(days=1) if ns.date() > now().date() else ns %}
-        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
+        {% set start_today = today_at(effective_on_time) %}
+        {% set start = start_today if now() >= start_today else start_today - timedelta(days=1) %}
+        {{ now().strftime('%H:%M') == (start + timedelta(minutes=schedule_duration_minutes | int(0))).strftime('%H:%M') }}
       {% endif %}
     id: schedule_off
-
-  # ── Rozvrh VYP: východ slunce ──
-  - trigger: template
-    value_template: >
-      {% if sched_off_type != 'sunrise' %}
-        false
-      {% else %}
-        {% set nr = state_attr('sun.sun', 'next_rising') | as_datetime | as_local %}
-        {% set base = nr - timedelta(days=1) if nr.date() > now().date() else nr %}
-        {{ now().strftime('%H:%M') == (base + timedelta(minutes=sched_off_offset | int(0))).strftime('%H:%M') }}
-      {% endif %}
-    id: schedule_off
-
-  # ── Rozvrh VYP: pevný čas ──
-  - trigger: time
-    at: !input schedule_off_time
-    id: schedule_off_fixed
 
 conditions: []
 
@@ -369,47 +286,17 @@ actions:
                     milliseconds: "{{ light_stagger_ms | int }}"
 
       # ════════════════════════════════════════
-      # ROZVRH ZAP (pevný čas) — jen pokud typ = fixed_time
-      # ════════════════════════════════════════
-      - conditions:
-          - condition: trigger
-            id: schedule_on_fixed
-          - condition: template
-            value_template: "{{ sched_on_type == 'fixed_time' }}"
-        sequence:
-          - repeat:
-              for_each: "{{ light_entity_list }}"
-              sequence:
-                - action: light.turn_on
-                  target:
-                    entity_id: "{{ repeat.item }}"
-                - delay:
-                    milliseconds: "{{ light_stagger_ms | int }}"
-
-      # ════════════════════════════════════════
-      # ROZVRH VYP (sunset/sunrise) — zhasni pokud není pohyb
+      # ROZVRH VYP (po délce svícení)
       # ════════════════════════════════════════
       - conditions:
           - condition: trigger
             id: schedule_off
         sequence:
-          - condition: template
-            value_template: >
+          - wait_template: >
               {{ expand(motion_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
+            timeout:
+              seconds: !input motion_timeout
+            continue_on_timeout: true
           - action: light.turn_off
             target: !input light_target
 
-      # ════════════════════════════════════════
-      # ROZVRH VYP (pevný čas) — jen pokud typ = fixed_time
-      # ════════════════════════════════════════
-      - conditions:
-          - condition: trigger
-            id: schedule_off_fixed
-          - condition: template
-            value_template: "{{ sched_off_type == 'fixed_time' }}"
-        sequence:
-          - condition: template
-            value_template: >
-              {{ expand(motion_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
-          - action: light.turn_off
-            target: !input light_target
