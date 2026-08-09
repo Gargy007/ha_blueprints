@@ -208,7 +208,7 @@ triggers:
       {% endif %}
     id: schedule_on
 
-  # ── Rozvrh VYP: start + délka svícení ──
+  # ── Rozvrh VYP: 5min okno po konci rozvrhu (pojistka proti propásnutí minuty) ──
   - trigger: template
     value_template: >
       {% if sched_on_type == 'disabled' %}
@@ -216,7 +216,8 @@ triggers:
       {% else %}
         {% set start_today = today_at(effective_on_time) %}
         {% set start = start_today if now() >= start_today else start_today - timedelta(days=1) %}
-        {{ now().strftime('%H:%M') == (start + timedelta(minutes=schedule_duration_minutes | int(0))).strftime('%H:%M') }}
+        {% set end = start + timedelta(minutes=schedule_duration_minutes | int(0)) %}
+        {{ end <= now() < end + timedelta(minutes=5) }}
       {% endif %}
     id: schedule_off
 
